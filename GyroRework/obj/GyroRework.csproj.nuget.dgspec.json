@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "restore": {
+    "D:\\vscode_dir\\SEScripts\\GyroRework\\GyroRework.csproj": {}
+  },
+  "projects": {
+    "D:\\vscode_dir\\SEScripts\\GyroRework\\GyroRework.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "D:\\vscode_dir\\SEScripts\\GyroRework\\GyroRework.csproj",
+        "projectName": "GyroRework",
+        "projectPath": "D:\\vscode_dir\\SEScripts\\GyroRework\\GyroRework.csproj",
+        "packagesPath": "C:\\Users\\diego\\.nuget\\packages\\",
+        "outputPath": "D:\\vscode_dir\\SEScripts\\GyroRework\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\diego\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "netframework48"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net48": {
+            "targetAlias": "netframework48",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "netframework48",
+          "dependencies": {
+            "Mal.Mdk2.PbAnalyzers": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.1.10, )"
+            },
+            "Mal.Mdk2.PbPackager": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.0.13, )"
+            },
+            "Mal.Mdk2.References": {
+              "target": "Package",
+              "version": "[2.2.3, )"
+            },
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )",
+              "autoReferenced": true
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.403\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+is_global = true
+build_property.ProjectDir = D:\vscode_dir\SEScripts\GyroRework\
+build_property.ProjectDir = D:\vscode_dir\SEScripts\GyroRework\
+build_property.Mdk-IgnorePaths = obj\**\*;MDK\**\*;**\*.debug.cs
+build_property.RootNamespace = IngameScript
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
