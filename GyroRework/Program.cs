@@ -1,4 +1,4 @@
-﻿using Sandbox.Game.EntityComponents;
+using Sandbox.Game.EntityComponents;
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
@@ -230,7 +230,7 @@ namespace IngameScript
             // ! but I wasn't sure how to effectively use it
             double F_damp = mass * V_damp.Length() / stoppingTime;
             double dampStrengthPercentage = 1;
-            V_damp.Normalize();
+            SafeNormalize(V_damp);
 
             // * would like to eventually maybe test the PID velocity dampener again,
             // * if not only to see if it's better for performance
@@ -305,8 +305,8 @@ namespace IngameScript
 
             // * echo important stuff
             {
-            Echo($"F_grav: {F_grav}, \nF_directional: {F_directional}, \nF_final: {F_final}\n");
-            Echo($"V_grav: {V_grav}, \nV_directional: {V_directional}, \nV_final: {V_final}\n");
+            Echo($"F_grav: {F_grav}\nF_directional: {F_directional}\nF_damp: {F_damp}\nF_final: {F_final}\n");
+            Echo($"V_grav: {V_grav}\nV_directional: {V_directional}\nV_damp: {V_damp}\nV_final: {V_final}\n");
             Echo($"\nThrustOverride: {thruster.ThrustOverride}\n");
             Echo($"\nMax effective thrust: {thruster.MaxEffectiveThrust}");
             }
@@ -328,7 +328,7 @@ namespace IngameScript
                 lcds[0].addLineVector3D(shipWeightVec);
                 lcds[0].addLine("Dampening direction vector:");
                 lcds[0].addLineVector3D(SafeNormalize(V_damp));
-                lcds[0].addLine($"Required velocity to dampen: {F_damp:0.##} m/s");
+                lcds[0].addLine($"Required velocity to dampen: {localVelocity.Length():0.##} m/s");
                 lcds[0].addLineFormat("Local movement vector: ", new string[]{});
                 lcds[0].addLineVector3D(moveInd, 3, false);
                 lcds[0].addLine($"Desired movement force: {gearAccel:0.##} N");
