@@ -22,9 +22,6 @@ using VRage.Game.ModAPI.Ingame.Utilities;
 using VRage.Game.ObjectBuilders.Definitions;
 using VRageMath;
 
-// ! maybe post in the discord
-// ! everything from here up to the start of logging in Main() is around 200 LoC
-
 namespace IngameScript
 {
     partial class Program : MyGridProgram
