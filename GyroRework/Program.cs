@@ -1,4 +1,5 @@
-using Sandbox.Game.EntityComponents;
+﻿using Sandbox.Game.EntityComponents;
+using Sandbox.Game.Weapons;
 using Sandbox.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
 using SpaceEngineers.Game.ModAPI.Ingame;
@@ -22,6 +23,9 @@ using VRage.Game.ModAPI.Ingame.Utilities;
 using VRage.Game.ObjectBuilders.Definitions;
 using VRageMath;
 
+// ! maybe post in the discord
+// ! everything from here up to the start of logging in Main() is around 200 LoC
+
 namespace IngameScript
 {
     partial class Program : MyGridProgram
@@ -31,7 +35,7 @@ namespace IngameScript
         public IMyMotorStator pitch, roll;
         public IMyThrust thruster;
         public IMyLandingGear landingGear;
-        public bool applyGravWhileLocked;
+        public bool applyGravWhileLocked, isCruiseCtrlOn;
         public double gearAccel;
         public double stoppingTime;
         public Vector3D testOppVec;
@@ -89,11 +93,11 @@ namespace IngameScript
             roll = GridTerminalSystem.GetBlockWithName("RotorRoll") as IMyMotorStator;
 
             // create PIDs for pitch and roll rotors
-            pitchPID = new PID(1.35, 0, 0, 1.0 / 60.0);
-            rollPID = new PID(1.35, 0, 0, 1.0 / 60.0);
+            pitchPID = new PID(4, 0, 0, 1.0 / 60.0);
+            rollPID = new PID(4, 0, 0, 1.0 / 60.0);
 
             // thruster PID experiment, didn't go so well, but maybe a tuning error
-            // thrustPID = new PID(controller.CalculateShipMass().PhysicalMass * 3 / 5, 0, 0, 1.0 / 60.0);
+            thrustPID = new PID(1.35, 0.0, 0.000, 1.0 / 60.0);
 
             // set acceleration/"gear" in Newtons (grams/m^s2)
             gearAccel = 3000;
@@ -102,6 +106,9 @@ namespace IngameScript
 
             // set whether to apply gravity while parked/locked
             applyGravWhileLocked = false;
+
+            // default off
+            isCruiseCtrlOn = false;
         }
 
         public void Save()
@@ -122,45 +129,50 @@ namespace IngameScript
             // argument handling; PID tuning and some other utility things that shouldn't affect flight
             {
                 if (argument != "" ) {
+                    if (argument == "cruise") isCruiseCtrlOn = !isCruiseCtrlOn;
                     if (argument == "gravWhileLocked") applyGravWhileLocked = !applyGravWhileLocked;
                     if (argument == "regen") {
                         Random r = new Random();
                         testOppVec = new Vector3D((double) r.Next(0, 201) / 100 - 1, 
                                             (double) r.Next(0, 101) / 100 - 1, // only downward y
                                             (double) r.Next(0, 201) / 100 - 1);
-                        SafeNormalize(testOppVec);
+                        testOppVec = SafeNormalize(testOppVec);
                     }
                     if (argument == "reset") { 
                         testOppVec = new Vector3D(0, 0, 0);
-                        pitchPID.Kp = rollPID.Kp = 1.35;
-                        pitchPID.Ki = rollPID.Ki = 0;
-                        pitchPID.Kd = rollPID.Kd = 0;
+                        thrustPID = new PID(1.35, 0.00, 0.000, 1.0 / 60.0);
                     }
                     if (argument[0] == 'p') {
                         if (argument[1] == '+') {
-                            pitchPID.Kp += 0.05d;
-                            rollPID.Kp += 0.05d;
+                            thrustPID.Kp += 0.05d;
+                            // pitchPID.Kp += 0.05d;
+                            // rollPID.Kp += 0.05d;
                         } else {
-                            pitchPID.Kp -= 0.05d;
-                            rollPID.Kp -= 0.05d;
+                            thrustPID.Kp -= 0.05d;
+                            // pitchPID.Kp -= 0.05d;
+                            // rollPID.Kp -= 0.05d;
                         }
                     }
                     if (argument[0] == 'i') {
                         if (argument[1] == '+') {
-                            pitchPID.Ki += 0.05d;
-                            rollPID.Ki += 0.05d;
+                            thrustPID.Ki += 0.001d;
+                            // pitchPID.Ki += 0.05d;
+                            // rollPID.Ki += 0.05d;
                         } else {
-                            pitchPID.Ki -= 0.05d;
-                            rollPID.Ki -= 0.05d;
+                            thrustPID.Ki -= 0.001d;
+                            // pitchPID.Ki -= 0.05d;
+                            // rollPID.Ki -= 0.05d;
                         }
                     }
                     if (argument[0] == 'd') {
                         if (argument[1] == '+') {
-                            pitchPID.Kd += 0.02d;
-                            rollPID.Kd += 0.02d;
+                            thrustPID.Kd += 0.0001d;
+                            // pitchPID.Kd += 0.02d;
+                            // rollPID.Kd += 0.02d;
                         } else {
-                            pitchPID.Kd -= 0.02d;
-                            rollPID.Kd -= 0.02d;
+                            thrustPID.Kd -= 0.0001d;
+                            // pitchPID.Kd -= 0.02d;
+                            // rollPID.Kd -= 0.02d;
                         }
                     }
                 }
@@ -172,7 +184,6 @@ namespace IngameScript
 
             // world matrix <-> local vector calculations from 
             // https://github.com/malware-dev/MDK-SE/wiki/Vector-Transformations-with-World-Matrices
-            MatrixD worldMatrix = controller.WorldMatrix;
             Matrix invWorldRot = MatrixD.Transpose(controller.WorldMatrix);
 
             Vector3D localVelocity = Vector3D.Rotate(controller.GetShipVelocities().LinearVelocity, invWorldRot);
@@ -189,7 +200,6 @@ namespace IngameScript
             Vector3D shipWeightVec = mass * localGravVec;
             double gravAccel = localGravVec.Length();
             double gForce = gravAccel / 9.81;
-            Vector3D localGravDirection = SafeNormalize(localGravVec);
 
             // this is just for tracking/readout/utility, doesn't get used in antigravity/dampening calculations
             Vector3D rotatedThrusterVec = CurrentThrusterDirectionVector();
@@ -203,7 +213,20 @@ namespace IngameScript
             // Dampening implementation
             // I referenced Whip's vector thrust script for this, but I think further changes might be needed
             // hopefully my comments describe the math correctly, i put them there to help my understanding
+
+            // * would like to eventually maybe test the PID velocity dampener again,
+            // * if not only to see if it's better for performance
+            // * not sure how to best initialize values or tune it though
+            // double F_damp = thrustPID.Control(thrustErr);
+            
+            // ! add "hover lock" switch
+            // ! on toggle, lock down current gps coordinate
+            // ! when lock is switched, override directional input
+            // ! instead of directional input, V_directional just is the vector going towards the gps coordinate
+            // ! might also want to reduce force toward that point
+
             Vector3D V_damp = Vector3D.Zero;
+            double F_damp = 0;
             // are we making a directional input?
             if (!moveInd.IsZero()) { 
                 if (Vector3D.Dot(moveInd, localVelocity) < 0) { 
@@ -219,47 +242,48 @@ namespace IngameScript
             } else {
                 // if we aren't moving, just counter the existing velocity
                 V_damp += localVelocity;
+                // F_damp = mass * thrustPID.Control(V_damp.Length());
             }
+                F_damp = mass * V_damp.Length() * 2;
 
-            // ! not sure if this calculation needs adjusting,
-            // ! or if my rotors are introducing lift, or both
-            // ! dampStrengthPercentage is a thing I saw in whip's script
-            // ! but I wasn't sure how to effectively use it
-            double F_damp = mass * V_damp.Length() / stoppingTime;
             double dampStrengthPercentage = 1;
-            SafeNormalize(V_damp);
-
-            // * would like to eventually maybe test the PID velocity dampener again,
-            // * if not only to see if it's better for performance
-            // * not sure how to best initialize values or tune it though
-            // double F_damp = thrustPID.Control(thrustErr);
-            
+            V_damp = SafeNormalize(V_damp);
             double F_final, F_grav, F_directional;
             Vector3D V_final, V_grav, V_directional;
             F_grav = mass * gravAccel; // f=ma
             F_directional = gearAccel; // gearAccel is a fixed value in N for now, might add cruise control later
-            V_grav = localGravDirection;
+            V_grav = SafeNormalize(localGravVec);
             if (landingGear.IsLocked && !applyGravWhileLocked) F_grav = 0;
-            V_directional = moveInd;
-            V_final = (F_grav * V_grav) - (F_directional * V_directional) + (V_damp * F_damp * dampStrengthPercentage);
+            V_directional = SafeNormalize(moveInd);
+            V_final = (F_grav * V_grav) - (F_directional * V_directional);
+            if (!isCruiseCtrlOn) V_final += V_damp * F_damp * dampStrengthPercentage;
             
             F_final = !V_final.IsZero() ? V_final.Length() : 0;
 
-            Vector3D requiredVec = -1 * V_final;
+            Vector3D requiredVec = getRequiredVec(mass);
 
             MyTuple<double, double> requiredAngles = GetAnglesFromVector(requiredVec);
-            double requiredPitchAngle = requiredAngles.Item1;
-            double requiredRollAngle = requiredAngles.Item2;
+            double requiredPitchAngle = ClampAngle(requiredAngles.Item1);
+            double requiredRollAngle = ClampAngle(requiredAngles.Item2);
+            double currentPitchAngle = ClampAngle(pitch.Angle);
+            double currentRollAngle = ClampAngle(roll.Angle);
 
-            double pitchErr = requiredPitchAngle - pitch.Angle;
-            double rollErr = requiredRollAngle - roll.Angle;
+            double pitchErr = ClampAngle(requiredPitchAngle - pitch.Angle);
+            double rollErr = ClampAngle(requiredRollAngle - roll.Angle);
+
+            double vectorAngleErr = Math.Acos(Vector3D.Dot(rotatedThrusterVec, requiredVec.IsZero()? Vector3D.Up : requiredVec.Normalized()));
+            double angleAccPercent = 1 - (vectorAngleErr / Math.PI);
 
             // * apply pitch and roll PIDs to rotor velocity
             if ((updateSource & UpdateType.Update1) != 0) {
 
                 // * avoid setting via ThrustOverride - it has some issues with atmospheric multiplier?
                 // * do this instead
-                thruster.ThrustOverridePercentage = (float) F_final / thruster.MaxEffectiveThrust;
+                thruster.ThrustOverridePercentage = (float) Math.Max(0.0001, F_final) / thruster.MaxEffectiveThrust;
+                if (F_final <= 0 || angleAccPercent < 0.6) thruster.Enabled = false;
+                else {
+                    thruster.Enabled = true;
+                }
                 // * source: whiplash on discord said so lol
                 // https://canary.discord.com/channels/125011928711036928/216219467959500800/1307221752153243699
                 
@@ -300,10 +324,12 @@ namespace IngameScript
                 roll.TargetVelocityRad = rollTgtVel;
             }
 
+
             // * echo important stuff
             {
             Echo($"F_grav: {F_grav}\nF_directional: {F_directional}\nF_damp: {F_damp}\nF_final: {F_final}\n");
             Echo($"V_grav: {V_grav}\nV_directional: {V_directional}\nV_damp: {V_damp}\nV_final: {V_final}\n");
+            Echo($"\nCurrent thrust: {thruster.CurrentThrust}");
             Echo($"\nThrustOverride: {thruster.ThrustOverride}\n");
             Echo($"\nMax effective thrust: {thruster.MaxEffectiveThrust}");
             }
@@ -311,35 +337,33 @@ namespace IngameScript
             // * write to screens (lcds index hardcoded)
             // TODO dynamic lcd assignment, maybe position based
             {
-                lcds[0].addLine($"Kp: {pitchPID.Kp} Ki: {pitchPID.Ki} Kd: {pitchPID.Kd}");
-                lcds[0].addLineFormat("Ship mass: {0} kg, ", new string[]{mass.ToString()});
-                lcds[0].addLine($"G-forces: {gForce:0.##} g");
-                lcds[0].addLine(new string('\u2550', 36));
-                lcds[0].addLine("Local gravity direction vector:");
-                lcds[0].addLineVector3D(localGravDirection);
-                lcds[0].addLineFormat("Local velocity direction vector: \n", new string[]{});
-                lcds[0].addLineVector3D(SafeNormalize(localVelocity));
-                lcds[0].addLine($"Stopping force @{stoppingTime:0.##}s: {F_damp:0.##} N");
-
-                lcds[0].addLine("Ship weight vector:");
-                lcds[0].addLineVector3D(shipWeightVec);
-                lcds[0].addLine("Dampening direction vector:");
-                lcds[0].addLineVector3D(SafeNormalize(V_damp));
-                lcds[0].addLine($"Required velocity to dampen: {localVelocity.Length():0.##} m/s");
-                lcds[0].addLineFormat("Local movement vector: ", new string[]{});
-                lcds[0].addLineVector3D(moveInd, 3, false);
+                lcds[0].addLine($"Kp: {thrustPID.Kp:0.00} Ki: {thrustPID.Ki:0.000} Kd: {thrustPID.Kd:0.0000} Mass: {mass:0.##}kg");
                 lcds[0].addLine($"Desired movement force: {gearAccel:0.##} N");
-                lcds[0].addLine(new string('\u2550', 36));
-                lcds[0].addLine("Current thrust vector:");
-                lcds[0].addLineVector3D(rotatedThrusterVec);
-                lcds[0].addLine("Current target vector (dampening + movement):");
+                lcds[0].addLine(new string('\u2550', 45));
+                lcds[0].addLine($"Ship weight w/ current gravity: {F_grav:0.##} N");
+                lcds[0].addLine("Gravity direction vector:");
+                lcds[0].addLineVector3D(V_grav);
+                lcds[0].addLine($"Stopping force needed @{stoppingTime:0.##}s: {F_damp:0.##} N");
+                lcds[0].addLine("Velocity dampening vector:");
+                lcds[0].addLineVector3D(V_damp);
+                lcds[0].addLine("Current velocity vector:");
+                lcds[0].addLineVector3D(localVelocity);
+                lcds[0].addLine($"Desired movement force: {F_directional:0.##} N");
+                lcds[0].addLine("Desired movement vector:");
+                lcds[0].addLineVector3D(V_directional);
+                lcds[0].addLine(new string('\u2550', 45));
+                lcds[0].addLineFormat("Target vector: ", new string[]{});
                 lcds[0].addLineVector3D(SafeNormalize(requiredVec));
-                lcds[0].addLine($"Current target force: {F_final:0.##} N");
+                lcds[0].addLineFormat("Current vector: ", new string[]{});
+                lcds[0].addLineVector3D(rotatedThrusterVec);
+                lcds[0].addLine($"Target force: {F_final:0.##} N");
                 lcds[0].addLine($"Current force: {thruster.CurrentThrust:0.##} N");
-                lcds[0].addLine(new string('\u2550', 36));
+                lcds[0].addLine($"Current velocity: {localVelocity.Length():0.0000000000} m/s");
+                lcds[0].addLine($"Vx: {localVelocity.X:0.00000} Vy: {localVelocity.Y:0.00000} Vz: {localVelocity.Z:0.00000} ");
+                lcds[0].addLine(new string('\u2550', 45));
                 
                 lcds[0].addLineFormat("Current pitch: ", new string[]{});
-                lcds[0].addLineAngle(pitch.Angle, WriteAngle.BOTH);
+                lcds[0].addLineAngle(currentPitchAngle, WriteAngle.BOTH);
                 lcds[0].addLineFormat("Required pitch: ", new string[]{});
                 lcds[0].addLineAngle(requiredPitchAngle, WriteAngle.BOTH);
                 lcds[0].addLineFormat("Pitch error: ", new string[]{});
@@ -349,7 +373,7 @@ namespace IngameScript
                 });
 
                 lcds[0].addLineFormat("Current roll: ", new string[]{});
-                lcds[0].addLineAngle(roll.Angle, WriteAngle.BOTH);
+                lcds[0].addLineAngle(currentRollAngle, WriteAngle.BOTH);
                 lcds[0].addLineFormat("Required roll: ", new string[]{});
                 lcds[0].addLineAngle(requiredRollAngle, WriteAngle.BOTH);
                 lcds[0].addLineFormat("Roll error: ", new string[]{});
@@ -357,6 +381,7 @@ namespace IngameScript
                 lcds[0].addLineFormat("Roll velocity: {0}rad | {1}rpm\n", new string[]{
                     roll.TargetVelocityRad.ToString("0.##"), roll.TargetVelocityRPM.ToString("0.##")
                 });
+                lcds[0].addLine($"angleAccPercent: {100 * angleAccPercent:##0.0##}%");
 
                 // lcds[0].addLine($"Current velocity: {localVelocity.Length():0.##}, error: {thrustErr:0.##}");
             }
@@ -367,6 +392,37 @@ namespace IngameScript
                 e.sb.Clear();
             });
 
+        }
+        public Vector3D getRequiredVec(float mass) {
+            MatrixD invWorldRot = MatrixD.Transpose(controller.WorldMatrix);
+            Vector3D V_grav, V_dir, V_damp, V_toInvert;
+            Vector3D localVelocities = Vector3D.Rotate(controller.GetShipVelocities().LinearVelocity, invWorldRot);
+
+            if (landingGear.IsLocked && !applyGravWhileLocked) {
+                V_grav = Vector3D.Zero;
+            } else { 
+                V_grav = Vector3D.Rotate(mass * controller.GetTotalGravity(), invWorldRot);
+            }
+            V_dir = SafeNormalize(controller.MoveIndicator) * (float) gearAccel;
+
+            if (!V_dir.IsZero()) {
+                V_damp = Vector3D.Reject(localVelocities, V_dir);
+                if (Vector3D.Dot(V_dir, localVelocities) < 0) {
+                    V_damp += Projection(localVelocities, V_dir);
+                }
+            } else {
+                V_damp = mass * localVelocities * 2;
+            }
+
+            V_toInvert = V_grav + V_damp - V_dir;
+            return -1 * V_toInvert;
+        }
+
+        public double ClampAngle(double a) {
+            double angle = a % (2 * Math.PI);
+            if (angle <= -Math.PI) angle += 2 * Math.PI;
+            else if (angle > Math.PI) angle -= 2 * Math.PI;
+            return angle;
         }
 
         // not used, but i referenced this a bit 
@@ -463,22 +519,21 @@ namespace IngameScript
         /// <summary> Converts a vector to a pair of angles (pitch, roll). </summary>
         /// <param name="v">The vector to be converted.</param>
         /// <returns> A MyTuple containing two doubles. item1 = pitch angle, item2 = roll angle.</returns>
-        public MyTuple<double, double> GetAnglesFromVector(VRageMath.Vector3 v){
-            // inverse trig requires unit vector
+        public MyTuple<double, double> GetAnglesFromVector(Vector3D v){
             if (!Vector3D.IsZero(v)) v.Normalize();
             double x = v.X;
             double y = v.Y;
             double z = v.Z;
-            float pitch, roll;
-            roll = (float) Math.Asin(x);
+            double pitch, roll;
+            roll = Math.Asin(x);
             if (y == 0) {
                 // fully pitched in some direction, but need to avoid dividing by 0
                 pitch = Math.Sign(z) * piOver2;
             } else if (y > 0) {
-                pitch = (float) Math.Atan(z / y);
+                pitch = Math.Atan(z / y);
             } else {
-                if (z < 0) pitch = (float) (Math.Atan(z / y) - Math.PI);
-                else pitch = (float) (Math.Atan(z / y) +  Math.PI);
+                if (z < 0) pitch = Math.Atan(z / y) - Math.PI;
+                else pitch = Math.Atan(z / y) +  Math.PI;
             }
             return new MyTuple<double, double>(pitch, roll);
         }
